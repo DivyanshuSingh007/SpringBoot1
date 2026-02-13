@@ -9,8 +9,8 @@ import java.math.BigDecimal;
 @Data
 public class CartItemResponse {
     private Long id;
-    private User user;
-    private Product product;
+    private UserResponse user;
+    private ProductResponse product;
     private Integer quantity;
     private BigDecimal price;
 }

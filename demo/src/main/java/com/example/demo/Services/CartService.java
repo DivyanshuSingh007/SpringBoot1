@@ -1,7 +1,6 @@
 package com.example.demo.Services;
 
-import com.example.demo.DTO.CartItemRequest;
-import com.example.demo.DTO.CartItemResponse;
+import com.example.demo.DTO.*;
 import com.example.demo.Entities.CartItem;
 import com.example.demo.Entities.Product;
 import com.example.demo.Entities.User;
@@ -20,94 +19,146 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class CartService {
+
     private final CartItemRepository cartItemRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
 
-    public boolean addToCart(String userId ,CartItemRequest item){
-        Optional<User> user = userRepository.findById(Long.valueOf(userId));
-        if(user.isEmpty()) return false;
-        Optional<Product> product = productRepository.findById(item.getProductId());
-        if(product.isEmpty()) return false;
-        Product product1 = product.get();
-        Optional<CartItem> existing = cartItemRepository.findByUserAndProduct(user.get(), product1);
-//        Product product = existing.get().getProduct();
-//        if(product == null) return false;
-        if(product1.getStockQuantity() < item.getQuantity()) return false;
+    public boolean addToCart(String userId, CartItemRequest item) {
+        Optional<User> userOpt = userRepository.findById(Long.valueOf(userId));
+        if(userOpt.isEmpty()) return false;
+        Optional<Product> productOpt = productRepository.findById(item.getProductId());
+        if(productOpt.isEmpty()) return false;
 
+        User user = userOpt.get();
+        Product product = productOpt.get();
 
-        if(existing.isPresent()) {
-            CartItem cartItem = existing.get();
-            cartItem.setQuantity(cartItem.getQuantity() + item.getQuantity());
-            cartItem.setPrice(product1.getPrice()
-                    .multiply(BigDecimal.valueOf(cartItem.getQuantity())));
-            cartItemRepository.save(cartItem);
-        } else {
+//        if(product.getStockQuantity() < item.getQuantity()) return false;
+        Optional<CartItem> cartItemOpt = cartItemRepository.findByUserAndProduct(user, product);
+
+        if(!cartItemOpt.isPresent()){
+            if(item.getQuantity() > product.getStockQuantity()) return false;
             CartItem cartItem = new CartItem();
-            cartItem.setUser(user.get());
-            cartItem.setProduct(product1);
+            cartItem.setUser(user);
+            cartItem.setProduct(product);
             cartItem.setQuantity(item.getQuantity());
-            cartItem.setPrice(product1.getPrice()
-                    .multiply(BigDecimal.valueOf(item.getQuantity())));
+            cartItem.setPrice(product.getPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity())));
             cartItemRepository.save(cartItem);
         }
+        else{
+            CartItem cartItem = cartItemOpt.get();
+            if(cartItem.getQuantity() + item.getQuantity() > product.getStockQuantity()) return false;
 
+            cartItem.setQuantity(cartItem.getQuantity() + item.getQuantity());
+            cartItem.setPrice(product.getPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity())));
+            cartItemRepository.save(cartItem);
+        }
         return true;
     }
 
-    public boolean removeFromCart(String userId ,CartItemRequest item){
-        Optional<User> user = userRepository.findById(Long.valueOf(userId));
-        if(user.isEmpty()) return false;
+    public boolean removeFromCart(String userId, CartItemRequest item) {
+        Optional<User> userOpt = userRepository.findById(Long.valueOf(userId));
+        if(userOpt.isEmpty()) return false;
+        Optional<Product> productOpt = productRepository.findById(item.getProductId());
+        if(productOpt.isEmpty()) return false;
 
-        Product product = productRepository.findById(item.getProductId()).get();
-        Optional<CartItem> cartItem = cartItemRepository.findByUserAndProduct(user.get(), product);
-        if(cartItem.isEmpty()) return false;
-
-        CartItem cartItem1 = cartItem.get();
-//        Product product1 = productRepository.findById(item.getId()).get();
-        if(cartItem1.getQuantity() <= item.getQuantity()){
-            cartItemRepository.delete(cartItem1);
-        }
-        else{
-            cartItem1.setQuantity(cartItem1.getQuantity() - item.getQuantity());
-            cartItem1.setUser(user.get());
-            cartItem1.setPrice(cartItem1.getPrice().multiply(BigDecimal.valueOf(cartItem1.getQuantity())));
-            cartItemRepository.save(cartItem1);
+        User user = userOpt.get();
+        Product product = productOpt.get();
+        Optional<CartItem> cartItemOpt = cartItemRepository.findByUserAndProduct(user, product);
+        if(cartItemOpt.isPresent()){
+            CartItem cartItem = cartItemOpt.get();
+            if(cartItem.getQuantity() <= item.getQuantity()){
+                cartItemRepository.delete(cartItem);
+            }
+            else {
+                cartItem.setQuantity(cartItem.getQuantity() - item.getQuantity());
+                cartItem.setPrice(product.getPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity())));
+                cartItemRepository.save(cartItem);
+            }
+            return true;
         }
         return false;
     }
-    public void deleteFromCart(String userId ,CartItemRequest item){
-        Optional<User> user = userRepository.findById(Long.valueOf(userId));
-        if(user.isEmpty()) return;
-        Optional<Product> product = productRepository.findById(item.getProductId());
-        Optional<CartItem> cartItem = cartItemRepository.findByUserAndId((user.get(), product.get());
-        if(cartItem.isEmpty()) return;
-        CartItem cartItem1 = cartItem.get();
-        cartItemRepository.delete(cartItem1);
+
+    public boolean deleteFromCart(String userId, Long id) {
+
+        Optional<User> userOpt = userRepository.findById(Long.valueOf(userId));
+        if (userOpt.isEmpty()) return false;
+
+        Optional<Product> productOpt = productRepository.findById(id);
+        if (productOpt.isEmpty()) return false;
+
+        Optional<CartItem> cartItemOpt =
+                cartItemRepository.findByUserAndProduct(userOpt.get(), productOpt.get());
+
+        cartItemOpt.ifPresent(cartItemRepository::delete);
+        return true;
     }
-    public List<CartItemResponse> getAllCartItems(String userId){
-        Optional<User> user = userRepository.findById(Long.valueOf(userId));
-        if(user.isEmpty()) return null;
-        return cartItemRepository.findByUser(user.get()).stream()
-                .map(this :: maptoCartItemResponse)
+
+    public List<CartItemResponse> getAllCartItems(String userId) {
+
+        Optional<User> userOpt = userRepository.findById(Long.valueOf(userId));
+        if (userOpt.isEmpty()) return new ArrayList<>();
+
+        return cartItemRepository.findByUser(userOpt.get())
+                .stream()
+                .map(this::mapToCartItemResponse)
                 .collect(Collectors.toList());
     }
 
-    public CartItemResponse getCartItem(String userId ,CartItemRequest item){
-        Optional<User> user = userRepository.findById(Long.valueOf(userId));
-        if(user.isEmpty()) return null;
-//        Product product = productRepository.findById(item.getId()).get();
-        return cartItemRepository.findByUserAndId(user.get(), item.getId())
-                .map(this :: maptoCartItemResponse).get();
-    }
+    public CartItemResponse getCartItem(String userId, Long id) {
 
-    private CartItemResponse maptoCartItemResponse(CartItem cartItem){
-        CartItemResponse cartItemResponse = new CartItemResponse();
-        cartItemResponse.setProduct(cartItem.getProduct());
-        cartItemResponse.setQuantity(cartItem.getQuantity());
-        cartItemResponse.setUser(cartItem.getUser());
-        cartItemResponse.setId(cartItem.getId());
-        cartItemResponse.setPrice(cartItem.getPrice());
-        return cartItemResponse;
+        Optional<User> userOpt = userRepository.findById(Long.valueOf(userId));
+        if (userOpt.isEmpty()) return null;
+
+        Optional<Product> productOpt = productRepository.findById(id);
+        if (productOpt.isEmpty()) return null;
+
+        return cartItemRepository
+                .findByUserAndProduct(userOpt.get(), productOpt.get())
+                .map(this::mapToCartItemResponse)
+                .orElse(null);
+    }
+    private UserResponse maptoUserResponse(User user){
+        UserResponse userResponse = new UserResponse();
+        userResponse.setId(String.valueOf(user.getId()));
+        userResponse.setUsername(user.getUsername());
+        userResponse.setFirstName(user.getFirstName());
+        userResponse.setLastName(user.getLastName());
+        AddressDTO addressDTO = new AddressDTO();
+        addressDTO.setCity(user.getAddress().getCity());
+        addressDTO.setState(user.getAddress().getState());
+        addressDTO.setCountry(user.getAddress().getCountry());
+        addressDTO.setZip(user.getAddress().getZip());
+        addressDTO.setStreet(user.getAddress().getStreet());
+        userResponse.setAddress(addressDTO);
+        return userResponse;
+    }
+    private ProductResponse maptoProductResponse(Product product) {
+        ProductResponse productResponse = new ProductResponse();
+        productResponse.setId(product.getId());
+        productResponse.setName(product.getName());
+        productResponse.setDescription(product.getDescription());
+        productResponse.setPrice(product.getPrice());
+        productResponse.setCategory(product.getCategory());// private String imageUrl;
+        //private String category;
+        //private Boolean active;
+        productResponse.setImageUrl(product.getImageUrl());
+        productResponse.setActive(product.getActive());
+        productResponse.setStockQuantity(product.getStockQuantity());
+        return productResponse;
+
+    }
+    private CartItemResponse mapToCartItemResponse(CartItem cartItem) {
+        CartItemResponse response = new CartItemResponse();
+        response.setId(cartItem.getId());
+//        response.setUserResponse(cartItem.getUser());
+//        response.setProductResponse(cartItem.getProduct());
+        response.setUser(maptoUserResponse(cartItem.getUser()));
+        response.setQuantity(cartItem.getQuantity());
+        response.setPrice(cartItem.getPrice());
+        response.setProduct(maptoProductResponse(cartItem.getProduct()));
+        return response;
     }
 }
+
